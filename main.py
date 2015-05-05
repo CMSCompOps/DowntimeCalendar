@@ -1,24 +1,31 @@
 import sys, googleAPI, time
+from optparse import OptionParser
 from lib import url, fileOps
 try: import json
 except ImportError: import simplejson as json
 
-if len(sys.argv) < 4:
-    sys.stderr.write('not enough parameter!\n')
+#if len(sys.argv) < 4:
+#    sys.stderr.write('not enough parameter!\n')
+#    sys.exit(1)
+
+parser = OptionParser()
+parser.add_option("-k", "--key",    dest="jsonKeyFile", help="Key file for google calendar API",       metavar="FILE")
+parser.add_option("-m", "--map",    dest="mapFile",     help="Map file to matche tiers and calendars", metavar="FILE")
+parser.add_option("-s", "--source", dest="source",      help="Calendar source url",                    metavar="URL")
+(options, args) = parser.parse_args()
+
+if not options.jsonKeyFile or not options.mapFile or not options.source:
+    sys.stderr.write('not enough argument. please run python main.py --help.\n')
     sys.exit(1)
 
-jsonKeyFile  = sys.argv[1]
-mapFile      = sys.argv[2]
-cSource      = sys.argv[3]
-
-credentials  = googleAPI.getCredentials(jsonKeyFile)
+credentials  = googleAPI.getCredentials(options.jsonKeyFile)
 service      = googleAPI.getService(credentials)
 
 # parse calendar-CMS site tier map file
-map          = json.loads(fileOps.read(mapFile))
+map          = json.loads(fileOps.read(options.mapFile))
 
 # get downtimes from dashboard and parse json
-dashboardDT  = json.loads(url.read(cSource))
+dashboardDT  = json.loads(url.read(options.source))
 downtimes    = []
 
 # get all calendars that are connected with the account
