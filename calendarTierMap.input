@@ -1,4 +1,5 @@
 {
-    "T1 downtimes"     : [1],
-    "T2 T3 downtimes"  : [2, 3]
+    "T1s downtimes" : [1],
+    "T2s downtimes" : [2],
+    "T3s downtimes" : [3]
 }
