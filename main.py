@@ -48,6 +48,11 @@ for i in dashboardDT['csvdata']:
     if color == 'green': continue
     # create google calendar entry summary
     summary = "%s %s [%s to %s]" % (site, stat, start.replace('T', ' '), end.replace('T', ' '))
+    # if service partially down, put the hash mark before the event summary
+    # (please, go to the dashboard::siteStatusBoard metric number 121 and
+    # see the metric details to understand better)
+    if color == 'yellow':
+        summary = '# ' + summary
     downtimeEvent = {'summary' : summary,
         'start': {'dateTime': start+'Z', 'timeZone' : 'Europe/Zurich'},
         'end' :  {'dateTime': end + 'Z', 'timeZone' : 'Europe/Zurich'} }
