@@ -26,14 +26,10 @@ map          = json.loads(fileOps.read(options.mapFile))
 
 # get downtimes from dashboard and parse json
 dashboardDT  = json.loads(url.read(options.source))
-downtimes    = []
 
-# get all calendars that are connected with the account
-calendarList = service.calendarList().list().execute()
-
-# old calendar events will be stored in this dict.
-# The structure is following: {'calendarId' : [events], ...}
-oldEvents    = {}
+# downtime events to be inserted
+# structure: {1 : [entry1, entry2], 2 : [entry3, entry4, ..] ..}
+downtimeEvents = {}
 
 for i in dashboardDT['csvdata']:
     color = i['COLORNAME']
@@ -53,39 +49,59 @@ for i in dashboardDT['csvdata']:
     # see the metric details to understand better)
     if color == 'yellow':
         summary = '# ' + summary
+
     downtimeEvent = {'summary' : summary,
         'start': {'dateTime': start+'Z', 'timeZone' : 'Europe/Zurich'},
         'end' :  {'dateTime': end + 'Z', 'timeZone' : 'Europe/Zurich'} }
-    # loop all calendars and check the calendar-tier map
-    for i in calendarList['items']:
-        calendarName = i['summary']
-        calendarId   = i['id']
 
-        # the calendar that is taken by using google api is not in the 
-        # calendar-tier map, skip it.
-        if not calendarName in map: continue
+    if not tier in downtimeEvents:
+        downtimeEvents[tier] = []
 
-        # skip site entry from dashboard if .....
-        if not tier in map[calendarName]: continue
+    if not downtimeEvent in downtimeEvents[tier]:
+        downtimeEvents[tier].append(downtimeEvent)
 
-        # collect evets if they were not collected for this calendar
-        # the idea behind collecting old events is to avoid to insert the
-        # events already inserted
-        if not calendarId in oldEvents:
-            oldEvents[calendarId] = []
-            pageToken = None
-            while True:
-                events = service.events().list(calendarId=calendarId, pageToken=pageToken).execute()
-                for event in events['items']:
-                    oldEvents[calendarId].append(event['summary'])
-                pageToken = events.get('nextPageToken')
-                if not pageToken:
-                    break
-        # skip the event if it is already inserted
-        if summary in oldEvents[calendarId]:
-            print 'Event is already in %s:' % calendarName, summary
-            continue
 
-        # insert event
-        createdEvent = service.events().insert(calendarId=i['id'], body=downtimeEvent).execute()
-        print summary, 'inserted...'
+# get all calendars
+calendarList = service.calendarList().list().execute()
+
+# old calendar events will be stored in this dict.
+# The structure is following: {'calendarId' : [events], ...}
+oldEvents    = {}
+
+# loop all calendars and get old events
+for i in calendarList['items']:
+    calendarName = i['summary']
+    calendarId   = i['id']
+
+    # if the clander is not mapped in the input file, skip it
+    if not calendarName in map:
+        print 'skip calendar:', calendarName
+        continue
+
+    print 'calendar:', calendarName
+
+    # collect old events
+    oldEvents[calendarId] = []
+    pageToken = None
+    while True:
+        events = service.events().list(calendarId=calendarId, pageToken=pageToken).execute()
+        for event in events['items']:
+            oldEvents[calendarId].append(event['summary'])
+        pageToken = events.get('nextPageToken')
+        if not pageToken:
+            break
+
+    # loop for each tier mapped to calendar
+    for tier in map[calendarName]:
+        # if there is no event to be inserted to calendar, sikip
+        if not tier in downtimeEvents: continue
+
+        for event in downtimeEvents[tier]:
+            #skip if event already inserted
+            if event['summary'] in oldEvents[calendarId]:
+                print 'Event is already in %s:' % calendarName, summary
+                continue
+
+            # insert new event
+            createdEvent = service.events().insert(calendarId=i['id'], body=downtimeEvent).execute()
+            print event['summary'], 'inserted...'
