@@ -77,10 +77,10 @@ for i in calendarList['items']:
 
     # if the clander is not mapped in the input file, skip it
     if not calendarName in map:
-        print 'skip calendar:', calendarName
+        print '## skip calendar:', calendarName
         continue
 
-    print 'calendar:', calendarName
+    print '## calendar:', calendarName
 
     # collect old events
     insertedEvents[calendarName] = []
