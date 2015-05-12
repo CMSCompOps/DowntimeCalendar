@@ -60,18 +60,20 @@ for i in dashboardDT['csvdata']:
     if not downtimeEvent in downtimeEvents[tier]:
         downtimeEvents[tier].append(downtimeEvent)
 
-
 # get all calendars
 calendarList = service.calendarList().list().execute()
 
-# old calendar events will be stored in this dict.
+# inserted calendar events will be stored in this dict.
 # The structure is following: {'calendarId' : [events], ...}
-oldEvents    = {}
+insertedEvents = {}
+
+# we don't want to get old events
+insertedEventsLowerBound = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.localtime(time.time() - 30*24*60*60))
 
 # loop all calendars and get old events
 for i in calendarList['items']:
     calendarName = i['summary']
-    calendarId   = i['id']
+    calendarId_  = i['id']
 
     # if the clander is not mapped in the input file, skip it
     if not calendarName in map:
@@ -81,12 +83,12 @@ for i in calendarList['items']:
     print 'calendar:', calendarName
 
     # collect old events
-    oldEvents[calendarId] = []
+    insertedEvents[calendarName] = []
     pageToken = None
     while True:
-        events = service.events().list(calendarId=calendarId, pageToken=pageToken).execute()
+        events = service.events().list(calendarId=calendarId_, pageToken=pageToken, timeMin = insertedEventsLowerBound).execute()
         for event in events['items']:
-            oldEvents[calendarId].append(event['summary'])
+            insertedEvents[calendarName].append(event['summary'])
         pageToken = events.get('nextPageToken')
         if not pageToken:
             break
@@ -98,10 +100,10 @@ for i in calendarList['items']:
 
         for event in downtimeEvents[tier]:
             #skip if event already inserted
-            if event['summary'] in oldEvents[calendarId]:
-                print 'Event is already in %s:' % calendarName, summary
+            if event['summary'] in insertedEvents[calendarName]:
+                print 'Event is already in %s:' % calendarName, event['summary']
                 continue
 
             # insert new event
-            createdEvent = service.events().insert(calendarId=i['id'], body=downtimeEvent).execute()
+            createdEvent = service.events().insert(calendarId=calendarId_, body=event).execute()
             print event['summary'], 'inserted...'
