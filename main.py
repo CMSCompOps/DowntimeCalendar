@@ -101,9 +101,9 @@ for i in calendarList['items']:
         for event in downtimeEvents[tier]:
             #skip if event already inserted
             if event['summary'] in insertedEvents[calendarName]:
-                print 'Event is already in %s:' % calendarName, event['summary']
+                print '* Event is already inserted:', event['summary']
                 continue
 
             # insert new event
             createdEvent = service.events().insert(calendarId=calendarId_, body=event).execute()
-            print event['summary'], 'inserted...'
+            print '+ Event inserted:', event['summary']
