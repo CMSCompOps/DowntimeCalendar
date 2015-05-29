@@ -100,7 +100,8 @@ for i in calendarList['items']:
 
         for event in downtimeEvents[tier]:
             #skip if event already inserted
-            if event['summary'] in insertedEvents[calendarName]:
+            if event['summary'] in insertedEvents[calendarName] or \
+               event['summary'].replace('# ', '') in insertedEvents[calendarName]:
                 print '* Event is already inserted:', event['summary']
                 continue
 
