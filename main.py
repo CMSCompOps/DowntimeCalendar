@@ -1,4 +1,4 @@
-import sys, googleAPI, time
+import sys, time, google, dashboard
 from optparse import OptionParser
 from lib import url, fileOps
 try: import json
@@ -9,102 +9,54 @@ except ImportError: import simplejson as json
 #    sys.exit(1)
 
 parser = OptionParser()
-parser.add_option("-k", "--key",    dest="jsonKeyFile", help="Key file for google calendar API",       metavar="FILE")
-parser.add_option("-m", "--map",    dest="mapFile",     help="Map file to matche tiers and calendars", metavar="FILE")
+parser.add_option("-k", "--key",    dest="jsonKeyFile", help="Key FILE for google calendar API",       metavar="FILE")
+parser.add_option("-m", "--map",    dest="mapFile",     help="Map FILE to matche tiers and calendars", metavar="FILE")
 parser.add_option("-s", "--source", dest="source",      help="Calendar source url",                    metavar="URL")
+parser.add_option("-r", "--range",  dest="range",       help="Time RANGE (window) in hours",           type="int")
 (options, args) = parser.parse_args()
 
-if not options.jsonKeyFile or not options.mapFile or not options.source:
+if not options.jsonKeyFile or not options.mapFile or not options.source or not options.range:
     sys.stderr.write('not enough argument. please run python main.py --help.\n')
     sys.exit(1)
 
-credentials  = googleAPI.getCredentials(options.jsonKeyFile)
-service      = googleAPI.getService(credentials)
-
+# create google calendar api
+api         = google.calendarAPI(options.jsonKeyFile)
 # parse calendar-CMS site tier map file
-map          = json.loads(fileOps.read(options.mapFile))
-
+map         = json.loads(fileOps.read(options.mapFile))
+# calculate lower bound parameter for google calendar api
+lowerBound  = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - options.range*60*60))
 # get downtimes from dashboard and parse json
-dashboardDT  = json.loads(url.read(options.source))
+print 'get downtime entries from dashboard: %s' %  options.source
+dashboardDT = dashboard.getDowntimes(options.source, lowerBound)
+# get all calendar under the google account
+calendars   = api.getCalendars()['items']
 
-# downtime events to be inserted
-# structure: {1 : [entry1, entry2], 2 : [entry3, entry4, ..] ..}
-downtimeEvents = {}
+# delete all old events to flush the downtime calendar
+for calendar in calendars:
+    # if curret calendar is not important for us, skip it
+    # !!! be careful, you dont want to delete events placed
+    # in other calendars. just delete events placed in related
+    # calendars and time range (window) !!!
+    if not calendar['summary'] in map: continue
 
-for i in dashboardDT['csvdata']:
-    color = i['COLORNAME']
-    site  = i['VOName']
-    tier  = int(site[1])
-    stat  = i['Status']
+    print '%s: all events between %s and now will be deleted' % (calendar['summary'], lowerBound)
 
-    # slot start and end times and convert them into unix time
-    start = i['Time']
-    end   = i['EndTime']
-    # skip the entry if it is not downtime
-    if color == 'green': continue
-    # create google calendar entry summary
-    summary = "%s %s [%s to %s]" % (site, stat, start.replace('T', ' '), end.replace('T', ' '))
-    # if service partially down, put the hash mark before the event summary
-    # (please, go to the dashboard::siteStatusBoard metric number 121 and
-    # see the metric details to understand better)
-    if color == 'yellow':
-        summary = '# ' + summary
+    for event in api.getEvents(calendar['id'], lowerBound):
+        api.deleteEvent(calendar['id'], event['id'])
+        print '- delete: %s' % event['summary']
 
-    downtimeEvent = {'summary' : summary,
-        'start': {'dateTime': start+'Z', 'timeZone' : 'Europe/Zurich'},
-        'end' :  {'dateTime': end + 'Z', 'timeZone' : 'Europe/Zurich'} }
+# insert entries
+for calendar in calendars:
+    # skip if current calendar is not our destionation
+    if not calendar['summary'] in map: continue
 
-    if not tier in downtimeEvents:
-        downtimeEvents[tier] = []
+    # get tiers stated in the map file
+    tiers = map[calendar['summary']]
 
-    if not downtimeEvent in downtimeEvents[tier]:
-        downtimeEvents[tier].append(downtimeEvent)
+    print '%s, tiers: %s' % (calendar['summary'], tiers)
 
-# get all calendars
-calendarList = service.calendarList().list().execute()
-
-# inserted calendar events will be stored in this dict.
-# The structure is following: {'calendarId' : [events], ...}
-insertedEvents = {}
-
-# we don't want to get old events
-insertedEventsLowerBound = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.localtime(time.time() - 30*24*60*60))
-
-# loop all calendars and get old events
-for i in calendarList['items']:
-    calendarName = i['summary']
-    calendarId_  = i['id']
-
-    # if the clander is not mapped in the input file, skip it
-    if not calendarName in map:
-        print '## skip calendar:', calendarName
-        continue
-
-    print '## calendar:', calendarName
-
-    # collect old events
-    insertedEvents[calendarName] = []
-    pageToken = None
-    while True:
-        events = service.events().list(calendarId=calendarId_, pageToken=pageToken, timeMin = insertedEventsLowerBound).execute()
-        for event in events['items']:
-            insertedEvents[calendarName].append(event['summary'])
-        pageToken = events.get('nextPageToken')
-        if not pageToken:
-            break
-
-    # loop for each tier mapped to calendar
-    for tier in map[calendarName]:
-        # if there is no event to be inserted to calendar, sikip
-        if not tier in downtimeEvents: continue
-
-        for event in downtimeEvents[tier]:
-            #skip if event already inserted
-            if event['summary'] in insertedEvents[calendarName] or \
-               event['summary'].replace('# ', '') in insertedEvents[calendarName]:
-                print '* Event is already inserted:', event['summary']
-                continue
-
-            # insert new event
-            createdEvent = service.events().insert(calendarId=calendarId_, body=event).execute()
-            print '+ Event inserted:', event['summary']
+    for tier in tiers:
+        events = dashboardDT[tier]
+        for event in events:
+            api.insertEvent(calendar['id'], event)
+            print '+ insert: %s' % event['summary']
