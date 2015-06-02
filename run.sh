@@ -7,7 +7,7 @@ jsonKey="DowntimeCalendarsV2-b6fdb0cd2db4.json"
 # calendar-CMS site tier map file
 map="calendarTierMap.input"
 # time range for both (google calendar and dashboard)
-range=336
+range=720
 # calendar source
 sourceURL="http://dashb-ssb.cern.ch/dashboard/request.py/getplotdata?columnid=121&time=$range&batch=1"
 
